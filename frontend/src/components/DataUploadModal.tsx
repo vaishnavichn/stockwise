@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, UploadCloud, FileSpreadsheet, FileText, Plus, CheckCircle2, AlertTriangle, Download } from "lucide-react";
+import { X, UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 import Papa from "papaparse";
 import { SKU_CATALOG } from "../api/types";
 

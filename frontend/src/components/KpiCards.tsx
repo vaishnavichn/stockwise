@@ -69,7 +69,7 @@ const KPI_DEFS: KpiCardDef[] = [
 
 function AnimatedNumber({ target, format }: { target: number; format: (v: number) => string }) {
   const [current, setCurrent] = useState(0);
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     const duration = 1200;

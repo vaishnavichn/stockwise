@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, Send, X, Sparkles } from "lucide-react";
+import { Send, X, Sparkles } from "lucide-react";
 import { postAssistantQuery } from "../api/client";
 
 interface Message {
