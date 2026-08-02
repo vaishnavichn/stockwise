@@ -25,21 +25,18 @@ app = FastAPI(
 # Allow local Vite dev server; tighten origins before production deploy.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(health_router)
-app.include_router(sales_router)
-app.include_router(forecast_router)
-app.include_router(inventory_router)
-app.include_router(assistant_router)
-app.include_router(dashboard_router)
-app.include_router(po_router)
-app.include_router(admin_router)
-app.include_router(upload_router)
+app.include_router(health_router, prefix="/api")
+app.include_router(sales_router, prefix="/api")
+app.include_router(forecast_router, prefix="/api")
+app.include_router(inventory_router, prefix="/api")
+app.include_router(assistant_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
+app.include_router(po_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
+app.include_router(upload_router, prefix="/api")
