@@ -37,7 +37,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  }, 5000);
+  }, 60000);
   if (!res.ok) {
     throw new Error(`API POST ${path} failed: ${res.status}`);
   }

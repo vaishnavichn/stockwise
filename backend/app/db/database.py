@@ -69,3 +69,14 @@ def fetch_all(table_name: str, query_builder_func=None, max_retries: int = 3) ->
                 raise RuntimeError(
                     f"Supabase query error on table '{table_name}' (after {max_retries} attempts): {exc}"
                 ) from exc
+
+
+def execute_query(table_name: str, query_builder_func) -> Any:
+    """
+    Execute write/upsert/insert query against Supabase client.
+    """
+    client = get_supabase_client()
+    q = client.table(table_name)
+    if query_builder_func:
+        q = query_builder_func(q)
+    return q.execute()

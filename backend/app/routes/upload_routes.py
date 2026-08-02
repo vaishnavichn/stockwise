@@ -17,7 +17,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.db.database import fetch_all, execute_query
-from app.ml.train_model import _evaluate_model, _create_prophet_model, _load_holidays_df, MODELS_DIR
+from app.ml.train_model import _create_prophet_model, _load_holidays_df, MODELS_DIR
 from app.ml.model_loader import clear_model_cache
 from app.services.forecast_service import clear_forecast_cache
 
