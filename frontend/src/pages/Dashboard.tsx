@@ -14,7 +14,7 @@ import ToggleSwitch from "../components/ToggleSwitch";
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedSku, setSelectedSku] = useState("SKU001");
+  const [selectedSku, setSelectedSku] = useState("ALL");
   const [viewMode, setViewMode] = useState<"chart" | "table">("chart");
   const [activeNav, setActiveNav] = useState<"home" | "inventory" | "analytics" | "settings">(
     "home",
@@ -32,9 +32,9 @@ export default function Dashboard() {
     fetchData(selectedSku);
   }, [selectedSku, fetchData]);
 
-  const productName =
-    SKU_CATALOG.find((s) => s.sku_id === selectedSku)?.product_name ??
-    selectedSku;
+  const productName = selectedSku === "ALL" 
+    ? "All Products (Combined)" 
+    : SKU_CATALOG.find((s) => s.sku_id === selectedSku)?.product_name ?? selectedSku;
 
   return (
     <LayoutShell
@@ -56,7 +56,7 @@ export default function Dashboard() {
           <section className="animate-fade-in-up">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[11px] font-bold tracking-widest text-[var(--neu-text-muted)] uppercase">
-                EXECUTIVE METRICS (SUPABASE LIVE)
+                EXECUTIVE METRICS
               </span>
               <span className="text-xs text-[var(--neu-text-muted)] font-medium">
                 Next {timeRange} Days Outlook

@@ -27,7 +27,8 @@ def _cache_key(sku_id: str, store_id: str | None) -> str:
 
 def _fetch_sales_history(sku_id: str, store_id: str | None) -> list[dict]:
     def builder(q):
-        q = q.eq("sku_id", sku_id)
+        if sku_id != "ALL":
+            q = q.eq("sku_id", sku_id)
         if store_id:
             q = q.eq("store_id", store_id)
         return q.order("date")
@@ -120,9 +121,10 @@ def generate_forecast(
     Generate forecast using pre-trained Prophet model loaded from disk.
     If pre-trained model is missing, falls back to mean-based forecast.
     """
-    sku_rows = fetch_all("skus", lambda q: q.eq("sku_id", sku_id))
-    if not sku_rows:
-        raise ValueError(f"SKU '{sku_id}' not found")
+    if sku_id != "ALL":
+        sku_rows = fetch_all("skus", lambda q: q.eq("sku_id", sku_id))
+        if not sku_rows:
+            raise ValueError(f"SKU '{sku_id}' not found")
 
     key = _cache_key(sku_id, store_id)
     if use_cache and key in _MODEL_CACHE:

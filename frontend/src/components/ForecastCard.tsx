@@ -74,6 +74,7 @@ export default function ForecastCard({
           onChange={(e) => onSkuChange(e.target.value)}
           className="neu-inset-sm px-4 py-2 text-sm font-medium text-[var(--neu-text)] bg-transparent border-none outline-none cursor-pointer appearance-none"
         >
+          <option value="ALL">All Products (Combined)</option>
           {SKU_CATALOG.map((item) => (
             <option key={item.sku_id} value={item.sku_id}>
               {item.product_name} ({item.sku_id})

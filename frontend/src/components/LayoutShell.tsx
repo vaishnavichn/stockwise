@@ -189,9 +189,6 @@ export default function LayoutShell({
             <h1 className="text-2xl font-extrabold tracking-tight text-[var(--neu-text)]">
               Smart Inventory Copilot
             </h1>
-            <p className="text-xs text-[var(--neu-text-muted)] mt-0.5 font-medium">
-              Real-time Prophet Demand Forecasting & Autonomous PO Generation
-            </p>
           </div>
 
           {/* Right Header Toolbar Controls */}
