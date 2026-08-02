@@ -1,0 +1,54 @@
+{
+  "description": "India-specific retail events for Prophet regressors (Phase 2)",
+  "events": [
+    {
+      "name": "New Year",
+      "start_date": "2024-01-01",
+      "end_date": "2024-01-03",
+      "impact_multiplier": 1.4,
+      "categories_affected": ["Beverages", "Snacks", "Personal Care"]
+    },
+    {
+      "name": "Holi",
+      "start_date": "2024-03-25",
+      "end_date": "2024-03-27",
+      "impact_multiplier": 1.5,
+      "categories_affected": ["Snacks", "Beverages", "Personal Care"]
+    },
+    {
+      "name": "Exam Season (Spring)",
+      "start_date": "2024-03-01",
+      "end_date": "2024-04-15",
+      "impact_multiplier": 1.25,
+      "categories_affected": ["Snacks", "Beverages"]
+    },
+    {
+      "name": "Diwali",
+      "start_date": "2024-11-01",
+      "end_date": "2024-11-05",
+      "impact_multiplier": 2.0,
+      "categories_affected": ["Snacks", "Beverages", "Personal Care", "Household"]
+    },
+    {
+      "name": "Pre-Diwali Shopping",
+      "start_date": "2024-10-15",
+      "end_date": "2024-10-31",
+      "impact_multiplier": 1.6,
+      "categories_affected": ["Household", "Personal Care", "Snacks"]
+    },
+    {
+      "name": "Exam Season (Autumn)",
+      "start_date": "2024-09-15",
+      "end_date": "2024-10-31",
+      "impact_multiplier": 1.2,
+      "categories_affected": ["Snacks", "Beverages"]
+    },
+    {
+      "name": "Year End",
+      "start_date": "2024-12-25",
+      "end_date": "2024-12-31",
+      "impact_multiplier": 1.5,
+      "categories_affected": ["Beverages", "Snacks", "Personal Care", "Household"]
+    }
+  ]
+}
