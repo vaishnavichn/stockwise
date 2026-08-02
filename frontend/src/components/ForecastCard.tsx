@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ForecastPoint, SalesPoint } from "../api/types";
+import type { ForecastPoint, ModelAccuracy, SalesPoint } from "../api/types";
 import { SKU_CATALOG } from "../api/types";
 
 interface ForecastCardProps {
@@ -19,6 +19,7 @@ interface ForecastCardProps {
   salesHistory: SalesPoint[];
   viewMode: "chart" | "table";
   loading?: boolean;
+  modelAccuracy?: ModelAccuracy | null;
   onSkuChange: (skuId: string) => void;
 }
 
@@ -44,6 +45,7 @@ export default function ForecastCard({
   salesHistory,
   viewMode,
   loading,
+  modelAccuracy,
   onSkuChange,
 }: ForecastCardProps) {
   if (loading) {
@@ -179,6 +181,13 @@ export default function ForecastCard({
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Model accuracy (Phase 4) */}
+      {modelAccuracy && (
+        <p className="mt-3 text-xs text-[var(--neu-text-muted)] text-center">
+          Model accuracy: {modelAccuracy.mape.toFixed(1)}% MAPE · RMSE: {modelAccuracy.rmse.toFixed(1)}
+        </p>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-"""Sales history endpoints — consumed by forecasting in Phase 2."""
+"""Sales history endpoints using Supabase queries."""
 
 from __future__ import annotations
 
@@ -14,46 +14,41 @@ def get_sales_history(
     sku_id: str,
     store_id: str | None = Query(default=None, description="Optional store filter"),
 ) -> dict:
-    """
-    Return raw historical sales for a SKU.
-    Phase 2 will aggregate this series for Prophet training.
-    """
-    sku_rows = fetch_all(
-        "SELECT sku_id, product_name, category, unit_price FROM skus WHERE sku_id = :sku_id",
-        {"sku_id": sku_id},
-    )
+    """Return historical sales for a SKU from Supabase."""
+    sku_rows = fetch_all("skus", lambda q: q.eq("sku_id", sku_id))
     if not sku_rows:
         raise HTTPException(status_code=404, detail=f"SKU '{sku_id}' not found")
 
-    query = """
-        SELECT s.date, s.store_id, st.store_name, s.sku_id, sk.product_name,
-               sk.category, s.units_sold, sk.unit_price AS price, s.stock_on_hand
-        FROM sales s
-        JOIN stores st ON st.store_id = s.store_id
-        JOIN skus sk ON sk.sku_id = s.sku_id
-        WHERE s.sku_id = :sku_id
-    """
-    params: dict = {"sku_id": sku_id}
+    sku = sku_rows[0]
 
-    if store_id:
-        query += " AND s.store_id = :store_id"
-        params["store_id"] = store_id
+    def builder(q):
+        q = q.eq("sku_id", sku_id)
+        if store_id:
+            q = q.eq("store_id", store_id)
+        return q.order("date").order("store_id")
 
-    query += " ORDER BY s.date ASC, s.store_id ASC"
-
-    rows = fetch_all(query, params)
+    rows = fetch_all("sales", builder)
     if not rows:
         raise HTTPException(
             status_code=404,
             detail=f"No sales records found for SKU '{sku_id}'",
         )
 
-    for row in rows:
-        row["date"] = row["date"].isoformat()
-        row["price"] = float(row["price"])
+    formatted_data = []
+    for r in rows:
+        formatted_data.append({
+            "date": str(r["date"]),
+            "store_id": r["store_id"],
+            "sku_id": r["sku_id"],
+            "product_name": sku["product_name"],
+            "category": sku["category"],
+            "units_sold": r["units_sold"],
+            "price": float(sku["unit_price"]),
+            "stock_on_hand": r.get("stock_on_hand_estimate") or r.get("stock_on_hand") or 0,
+        })
 
     return {
         "sku_id": sku_id,
-        "count": len(rows),
-        "data": rows,
+        "count": len(formatted_data),
+        "data": formatted_data,
     }

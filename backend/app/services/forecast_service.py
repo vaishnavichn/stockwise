@@ -1,4 +1,4 @@
-"""Prophet-based demand forecasting with festival holidays and in-memory model cache."""
+"""Prophet-based demand forecasting loading pre-trained models with fallback."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ import pandas as pd
 from prophet import Prophet
 
 from app.db.database import fetch_all
+from app.ml.model_loader import load_model, get_model_accuracy
 
 logging.getLogger("prophet").setLevel(logging.WARNING)
 logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
 
 CALENDAR_PATH = Path(__file__).resolve().parent.parent / "db" / "festival_calendar.json"
 
-# In-memory cache: key -> {model, full_predict_df, history_df, forecast_rows, meta}
+# In-memory context cache: key -> {model, forecast_df, history_df, forecast, periods, history_days, method, model_accuracy}
 _MODEL_CACHE: dict[str, dict] = {}
 
 
@@ -24,44 +25,24 @@ def _cache_key(sku_id: str, store_id: str | None) -> str:
     return f"{sku_id}:{store_id or 'all'}"
 
 
-def _load_holidays_df() -> pd.DataFrame:
-    with CALENDAR_PATH.open(encoding="utf-8") as f:
-        calendar = json.load(f)
-
-    rows: list[dict] = []
-    for event in calendar["events"]:
-        for day in pd.date_range(event["start_date"], event["end_date"], freq="D"):
-            rows.append(
-                {
-                    "holiday": event["name"],
-                    "ds": pd.Timestamp(day),
-                    "lower_window": 0,
-                    "upper_window": 0,
-                }
-            )
-    return pd.DataFrame(rows)
-
-
 def _fetch_sales_history(sku_id: str, store_id: str | None) -> list[dict]:
-    if store_id:
-        query = """
-            SELECT date, units_sold
-            FROM sales
-            WHERE sku_id = :sku_id AND store_id = :store_id
-            ORDER BY date ASC
-        """
-        params = {"sku_id": sku_id, "store_id": store_id}
-    else:
-        query = """
-            SELECT date, SUM(units_sold) AS units_sold
-            FROM sales
-            WHERE sku_id = :sku_id
-            GROUP BY date
-            ORDER BY date ASC
-        """
-        params = {"sku_id": sku_id}
+    def builder(q):
+        q = q.eq("sku_id", sku_id)
+        if store_id:
+            q = q.eq("store_id", store_id)
+        return q.order("date")
 
-    return fetch_all(query, params)
+    rows = fetch_all("sales", builder)
+    if not rows:
+        return []
+
+    if store_id:
+        return [{"date": r["date"], "units_sold": r["units_sold"]} for r in rows]
+
+    # Aggregate by date across stores
+    df = pd.DataFrame(rows)
+    agg = df.groupby("date", as_index=False)["units_sold"].sum()
+    return agg.to_dict("records")
 
 
 def _to_prophet_frame(rows: list[dict]) -> pd.DataFrame:
@@ -82,7 +63,7 @@ def _to_prophet_frame(rows: list[dict]) -> pd.DataFrame:
 
 
 def _simple_fallback_forecast(history: pd.DataFrame, periods: int) -> list[dict]:
-    """Mean-based forecast when history is too sparse for Prophet."""
+    """Mean-based forecast when pre-trained model is missing or history is too sparse."""
     baseline = float(history["y"].mean()) if len(history) else 0.0
     last_date = history["ds"].max() if len(history) else pd.Timestamp.today()
     future_dates = pd.date_range(last_date + pd.Timedelta(days=1), periods=periods, freq="D")
@@ -99,22 +80,21 @@ def _simple_fallback_forecast(history: pd.DataFrame, periods: int) -> list[dict]
     ]
 
 
-def _train_and_predict(history: pd.DataFrame, periods: int) -> tuple[Prophet | None, pd.DataFrame, list[dict]]:
-    if len(history) < 14:
-        return None, history.copy(), _simple_fallback_forecast(history, periods)
-
-    holidays = _load_holidays_df()
-    model = Prophet(
-        yearly_seasonality=True,
-        weekly_seasonality=True,
-        daily_seasonality=False,
-        holidays=holidays,
-        interval_width=0.8,
-    )
-    model.fit(history)
-
+def _predict_with_model(model: Prophet, periods: int) -> tuple[pd.DataFrame, list[dict]]:
     future = model.make_future_dataframe(periods=periods, freq="D")
+    
+    # Add month_end regressor if model expects it
+    future["month_end"] = future["ds"].dt.is_month_end | (future["ds"].dt.day >= (future["ds"].dt.days_in_month - 2))
+    future["month_end"] = future["month_end"].astype(int)
+
     forecast_df = model.predict(future)
+
+    # Inverse transform log predictions if log1p was used during training
+    is_log = getattr(model, "is_log_transformed", False)
+    if is_log:
+        forecast_df["yhat"] = np.expm1(np.maximum(0.0, forecast_df["yhat"]))
+        forecast_df["yhat_lower"] = np.expm1(np.maximum(0.0, forecast_df["yhat_lower"]))
+        forecast_df["yhat_upper"] = np.expm1(np.maximum(0.0, forecast_df["yhat_upper"]))
 
     future_only = forecast_df.tail(periods).copy()
     rows = [
@@ -126,7 +106,7 @@ def _train_and_predict(history: pd.DataFrame, periods: int) -> tuple[Prophet | N
         }
         for row in future_only.itertuples(index=False)
     ]
-    return model, forecast_df, rows
+    return forecast_df, rows
 
 
 def generate_forecast(
@@ -137,15 +117,10 @@ def generate_forecast(
     use_cache: bool = True,
 ) -> dict:
     """
-    Train Prophet (or fallback) and forecast the next `periods` days.
-
-    Returns forecast rows plus metadata. Full Prophet output is stored in cache
-    for explainability and inventory calculations.
+    Generate forecast using pre-trained Prophet model loaded from disk.
+    If pre-trained model is missing, falls back to mean-based forecast.
     """
-    sku_rows = fetch_all(
-        "SELECT sku_id FROM skus WHERE sku_id = :sku_id",
-        {"sku_id": sku_id},
-    )
+    sku_rows = fetch_all("skus", lambda q: q.eq("sku_id", sku_id))
     if not sku_rows:
         raise ValueError(f"SKU '{sku_id}' not found")
 
@@ -159,6 +134,7 @@ def generate_forecast(
                 "periods": periods,
                 "history_days": cached["history_days"],
                 "method": cached["method"],
+                "model_accuracy": cached.get("model_accuracy"),
                 "forecast": cached["forecast"],
             }
 
@@ -167,8 +143,23 @@ def generate_forecast(
         raise ValueError(f"No sales history for SKU '{sku_id}'")
 
     history = _to_prophet_frame(raw)
-    model, forecast_df, forecast_rows = _train_and_predict(history, periods)
-    method = "prophet" if model is not None else "mean_fallback"
+
+    # Load pre-trained model
+    model = None
+    try:
+        model = load_model(sku_id)
+    except FileNotFoundError:
+        logging.warning("No pre-trained model found for %s. Using mean_fallback.", sku_id)
+
+    if model is not None:
+        method = "pretrained_prophet"
+        forecast_df, forecast_rows = _predict_with_model(model, periods)
+        accuracy = get_model_accuracy(sku_id)
+    else:
+        method = "mean_fallback"
+        forecast_df = pd.DataFrame()
+        forecast_rows = _simple_fallback_forecast(history, periods)
+        accuracy = None
 
     _MODEL_CACHE[key] = {
         "model": model,
@@ -178,6 +169,7 @@ def generate_forecast(
         "periods": periods,
         "history_days": len(history),
         "method": method,
+        "model_accuracy": accuracy,
         "sku_id": sku_id,
         "store_id": store_id,
     }
@@ -188,9 +180,14 @@ def generate_forecast(
         "periods": periods,
         "history_days": len(history),
         "method": method,
+        "model_accuracy": accuracy,
         "forecast": forecast_rows,
     }
 
 
 def get_cached_forecast_context(sku_id: str, store_id: str | None = None) -> dict | None:
     return _MODEL_CACHE.get(_cache_key(sku_id, store_id))
+
+
+def clear_forecast_cache() -> None:
+    _MODEL_CACHE.clear()

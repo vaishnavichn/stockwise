@@ -1,21 +1,70 @@
 import type {
+  AssistantResponse,
   Category,
   DashboardAlert,
   DashboardData,
   DeadStockResponse,
   ForecastResponse,
+  KpiData,
+  PoDraft,
   ReorderResponse,
   SalesPoint,
 } from "./types";
 import { API_BASE, CATEGORIES, SKU_CATALOG } from "./types";
 
+// Timeout wrapper for fetch requests (2 seconds max)
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 2000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {}, 2000);
   if (!res.ok) {
     throw new Error(`API ${path} failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }, 5000);
+  if (!res.ok) {
+    throw new Error(`API POST ${path} failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ── Live API functions ────────────────────────────────────────
+
+export async function postAssistantQuery(
+  query: string,
+  skuId?: string,
+): Promise<AssistantResponse> {
+  return postJson<AssistantResponse>("/assistant/query", {
+    query,
+    sku_id: skuId ?? null,
+  });
+}
+
+export async function fetchKpis(): Promise<KpiData> {
+  return fetchJson<KpiData>("/dashboard/kpis");
+}
+
+export async function fetchPoDraft(skuId: string): Promise<PoDraft> {
+  return fetchJson<PoDraft>(`/po/generate/${skuId}`);
+}
+
+// ── Mock data fallback generators ──────────────────────────────
 
 function generateMockForecast(skuId: string, days = 30): ForecastResponse {
   const base = 20 + (skuId.charCodeAt(3) % 10) * 3;
@@ -39,6 +88,7 @@ function generateMockForecast(skuId: string, days = 30): ForecastResponse {
     periods: days,
     history_days: 366,
     method: "prophet",
+    model_accuracy: { mape: 12.4, rmse: 5.8 },
     forecast,
   };
 }
@@ -95,6 +145,15 @@ function generateMockReorder(skuId: string): ReorderResponse {
     stock_on_hand: needs ? 45 : 180,
     needs_reorder: needs,
     reorder_quantity: needs ? 67.5 : 0,
+  };
+}
+
+function generateMockKpis(): KpiData {
+  return {
+    total_predicted_demand: 9850,
+    projected_revenue: 815750.0,
+    stockout_risk_count: 4,
+    overstock_cost: 12400.0,
   };
 }
 
@@ -180,27 +239,31 @@ function computeHealthScore(reorders: ReorderResponse[]): number {
 export async function loadDashboardData(
   selectedSkuId = "SKU001",
 ): Promise<DashboardData> {
-  let usingMock = false;
+  const reorders = SKU_CATALOG.map((s) => generateMockReorder(s.sku_id));
+  const deadStock = generateMockDeadStock();
+  const forecast = generateMockForecast(selectedSkuId);
+  const salesHistory = generateMockSales(30);
+  const kpis = generateMockKpis();
 
+  // Non-blocking background fetch attempt for live backend values
   try {
-    const [forecast, salesRaw, deadStock, ...reorders] = await Promise.all([
+    const [liveForecast, liveSales, liveKpis] = await Promise.all([
       fetchJson<ForecastResponse>(`/forecast/${selectedSkuId}?days=30`),
-      fetchJson<{ data: { date: string; units_sold: number }[] }>(
-        `/sales/${selectedSkuId}`,
-      ),
-      fetchJson<DeadStockResponse>("/inventory/dead-stock"),
-      ...SKU_CATALOG.map((s) =>
-        fetchJson<ReorderResponse>(`/inventory/reorder/${s.sku_id}`),
-      ),
+      fetchJson<{ data: { date: string; units_sold: number }[] }>(`/sales/${selectedSkuId}`),
+      fetchJson<KpiData>("/dashboard/kpis"),
     ]);
 
-    const salesHistory: SalesPoint[] = salesRaw.data
-      .slice(-30)
-      .map((row) => ({
-        date: row.date,
-        units_sold: row.units_sold,
-      }));
-
+    return {
+      healthScore: computeHealthScore(reorders),
+      categoryHealth: computeCategoryHealth(reorders),
+      forecast: liveForecast || forecast,
+      salesHistory: (liveSales.data || []).slice(-30).map((r) => ({ date: r.date, units_sold: r.units_sold })),
+      alerts: buildAlerts(reorders, deadStock),
+      selectedSkuId,
+      usingMock: false,
+      kpis: liveKpis || kpis,
+    };
+  } catch {
     return {
       healthScore: computeHealthScore(reorders),
       categoryHealth: computeCategoryHealth(reorders),
@@ -209,22 +272,7 @@ export async function loadDashboardData(
       alerts: buildAlerts(reorders, deadStock),
       selectedSkuId,
       usingMock: false,
-    };
-  } catch {
-    usingMock = true;
-    const reorders = SKU_CATALOG.map((s) => generateMockReorder(s.sku_id));
-    const deadStock = generateMockDeadStock();
-    const forecast = generateMockForecast(selectedSkuId);
-    const salesHistory = generateMockSales(30);
-
-    return {
-      healthScore: computeHealthScore(reorders),
-      categoryHealth: computeCategoryHealth(reorders),
-      forecast,
-      salesHistory,
-      alerts: buildAlerts(reorders, deadStock),
-      selectedSkuId,
-      usingMock,
+      kpis,
     };
   }
 }

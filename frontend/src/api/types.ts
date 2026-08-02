@@ -35,12 +35,18 @@ export interface ForecastPoint {
   upper_bound: number;
 }
 
+export interface ModelAccuracy {
+  mape: number;
+  rmse: number;
+}
+
 export interface ForecastResponse {
   sku_id: string;
   store_id: string | null;
   periods: number;
   history_days: number;
   method: string;
+  model_accuracy?: ModelAccuracy | null;
   forecast: ForecastPoint[];
 }
 
@@ -93,6 +99,36 @@ export interface DashboardAlert {
   severity: "red" | "amber" | "green";
 }
 
+// Phase 4 types
+
+export interface KpiData {
+  total_predicted_demand: number;
+  projected_revenue: number;
+  stockout_risk_count: number;
+  overstock_cost: number;
+}
+
+export interface AssistantResponse {
+  answer: string;
+}
+
+export interface PoDraft {
+  po_number: string;
+  sku_id: string;
+  product_name: string;
+  category: string;
+  supplier: string;
+  order_quantity: number;
+  unit_price: number;
+  total_cost: number;
+  avg_daily_demand: number;
+  stock_on_hand: number;
+  reorder_point: number;
+  needs_reorder: boolean;
+  justification: string;
+  created_at: string;
+}
+
 export interface DashboardData {
   healthScore: number;
   categoryHealth: CategoryHealth[];
@@ -101,4 +137,5 @@ export interface DashboardData {
   alerts: DashboardAlert[];
   selectedSkuId: string;
   usingMock: boolean;
+  kpis?: KpiData | null;
 }

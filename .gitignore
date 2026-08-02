@@ -5,6 +5,10 @@ __pycache__/
 venv/
 .env
 
+# Trained ML models and artifacts
+backend/app/ml/models/*.pkl
+app/ml/models/*.pkl
+
 # Node
 node_modules/
 dist/
